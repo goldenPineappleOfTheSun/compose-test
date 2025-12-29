@@ -1,0 +1,271 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .image-manager {
+        max-width: 1200px;
+        margin: 20px auto;
+    }
+    .upload-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+    }
+    .upload-form {
+        display: flex;
+        gap: 15px;
+        align-items: flex-end;
+    }
+    .form-group {
+        flex: 1;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+    .form-group input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+    .btn-primary {
+        background: #417690;
+        color: white;
+    }
+    .btn-primary:hover {
+        background: #205067;
+    }
+    .btn-danger {
+        background: #ba2121;
+        color: white;
+    }
+    .btn-danger:hover {
+        background: #842025;
+    }
+    .images-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+    }
+    .image-item {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        background: white;
+    }
+    .image-item img {
+        width: 100%;
+        height: 200px;
+        object-fit: cover;
+        border-radius: 4px;
+        margin-bottom: 10px;
+    }
+    .image-controls {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+    }
+    .image-controls input {
+        flex: 1;
+        padding: 6px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    .image-controls button {
+        padding: 6px 12px;
+    }
+    .message {
+        padding: 10px;
+        margin-bottom: 20px;
+        border-radius: 4px;
+    }
+    .message.success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    .message.error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="image-manager">
+    <h1>Управление изображениями</h1>
+    
+    <div id="message-container"></div>
+    
+    <div class="upload-section">
+        <h2>Загрузить новое изображение</h2>
+        <form class="upload-form" id="upload-form" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="image-file">Изображение:</label>
+                <input type="file" id="image-file" name="image" accept="image/*" required>
+            </div>
+            <div class="form-group">
+                <label for="image-name">Имя изображения:</label>
+                <input type="text" id="image-name" name="name" placeholder="Введите имя" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Загрузить</button>
+        </form>
+    </div>
+    
+    <div class="images-list" id="images-list">
+        {% for image in images %}
+        <div class="image-item" data-id="{{ image.id }}">
+            <img src="{{ image.image.url }}" alt="{{ image.name }}">
+            <div class="image-controls">
+                <input type="text" value="{{ image.name }}" data-image-id="{{ image.id }}" class="image-name-input">
+                <button type="button" class="btn btn-danger" onclick="deleteImage({{ image.id }})">Удалить</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    function showMessage(text, type) {
+        const container = document.getElementById('message-container');
+        container.innerHTML = `<div class="message ${type}">${text}</div>`;
+        setTimeout(() => {
+            container.innerHTML = '';
+        }, 5000);
+    }
+
+    // Обработка загрузки изображения
+    document.getElementById('upload-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData();
+        const imageFile = document.getElementById('image-file').files[0];
+        const imageName = document.getElementById('image-name').value;
+        
+        if (!imageFile) {
+            showMessage('Пожалуйста, выберите изображение', 'error');
+            return;
+        }
+        
+        formData.append('image', imageFile);
+        formData.append('name', imageName);
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        
+        try {
+            const response = await fetch('{% url "admin:gallery_image_upload" %}', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showMessage('Изображение успешно загружено', 'success');
+                addImageToGrid(data);
+                document.getElementById('upload-form').reset();
+            } else {
+                showMessage(data.error || 'Ошибка при загрузке', 'error');
+            }
+        } catch (error) {
+            showMessage('Ошибка при загрузке: ' + error.message, 'error');
+        }
+    });
+
+    // Добавление изображения в сетку
+    function addImageToGrid(imageData) {
+        const imagesList = document.getElementById('images-list');
+        const imageItem = document.createElement('div');
+        imageItem.className = 'image-item';
+        imageItem.setAttribute('data-id', imageData.id);
+        imageItem.innerHTML = `
+            <img src="${imageData.url}" alt="${imageData.name}">
+            <div class="image-controls">
+                <input type="text" value="${imageData.name}" data-image-id="${imageData.id}" class="image-name-input">
+                <button type="button" class="btn btn-danger" onclick="deleteImage(${imageData.id})">Удалить</button>
+            </div>
+        `;
+        imagesList.insertBefore(imageItem, imagesList.firstChild);
+        
+        // Добавляем обработчик для изменения имени
+        const nameInput = imageItem.querySelector('.image-name-input');
+        nameInput.addEventListener('blur', function() {
+            updateImageName(imageData.id, this.value);
+        });
+    }
+
+    // Обновление имени изображения
+    async function updateImageName(imageId, newName) {
+        const formData = new FormData();
+        formData.append('name', newName);
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        
+        try {
+            const response = await fetch(`{% url "admin:gallery_image_update" 0 %}`.replace('0', imageId), {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showMessage('Имя изображения обновлено', 'success');
+            } else {
+                showMessage(data.error || 'Ошибка при обновлении', 'error');
+            }
+        } catch (error) {
+            showMessage('Ошибка при обновлении: ' + error.message, 'error');
+        }
+    }
+
+    // Удаление изображения
+    async function deleteImage(imageId) {
+        if (!confirm('Вы уверены, что хотите удалить это изображение?')) {
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        
+        try {
+            const response = await fetch(`{% url "admin:gallery_image_delete" 0 %}`.replace('0', imageId), {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                showMessage('Изображение успешно удалено', 'success');
+                document.querySelector(`.image-item[data-id="${imageId}"]`).remove();
+            } else {
+                showMessage(data.error || 'Ошибка при удалении', 'error');
+            }
+        } catch (error) {
+            showMessage('Ошибка при удалении: ' + error.message, 'error');
+        }
+    }
+
+    // Обработчики для изменения имени при потере фокуса
+    document.querySelectorAll('.image-name-input').forEach(input => {
+        input.addEventListener('blur', function() {
+            const imageId = this.getAttribute('data-image-id');
+            updateImageName(imageId, this.value);
+        });
+    });
+</script>
+{% endblock %}
+
